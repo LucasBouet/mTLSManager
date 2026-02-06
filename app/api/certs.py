@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.db import SessionLocal
 from app.models.cert import ClientCert
-from app.core.certs import create_client_cert
+from app.core.certs import create_client_cert, create_client_p12
 from app.core.crl import generate_crl
+from fastapi.responses import FileResponse
 
 router = APIRouter(prefix="/certs")
 
@@ -48,3 +49,29 @@ def revoke(cn: str, db: Session = Depends(db)):
     generate_crl(revoked)
 
     return {"status": "revoked"}
+
+@router.post("/{cn}/p12")
+def generate_p12(
+    cn: str,
+    password: str | None = None,
+):
+    try:
+        p12_path = create_client_p12(cn, password)
+    except FileNotFoundError:
+        raise HTTPException(404, "Certificate not found")
+
+    return {
+        "status": "created",
+        "file": str(p12_path),
+        "password_protected": bool(password)
+    }
+
+@router.get("/{cn}/p12")
+def download_p12(cn: str):
+    p12_path = f"data/certs/{cn}.p12"
+
+    return FileResponse(
+        p12_path,
+        media_type="application/x-pkcs12",
+        filename=f"{cn}.p12"
+    )
